@@ -19,32 +19,38 @@ service cloud.firestore {
     }
 
     // ---------- 期間キー（js/ranking.js の periodKey と同じ計算） ----------
-    function jstMillis() {
-      return request.time.toMillis() + 32400000;
+    function jst() {
+      return request.time + duration.value(9, 'h');
     }
     function weekKey() {
-      return 'w' + string(math.floor((math.floor(jstMillis() / 86400000.0) + 3) / 7.0));
+      return 'w' + string(math.floor((math.floor(jst().toMillis() / 86400000.0) + 3) / 7.0));
     }
     function monthKey() {
-      let t = timestamp.value(jstMillis());
-      return 'm' + string(t.year() * 100 + t.month());
+      return 'm' + string(jst().year() * 100 + jst().month());
     }
     function validPeriod(period) {
       return period == 'all' || period == weekKey() || period == monthKey();
     }
 
-    // ---------- スコア上限 ----------
-    // 速度は常に min(600, 240 + 6t) px/秒 以下（js/config.js の速度カーブより）。
-    // 1000点の金リンゴは最短でも 144px おきなので、点数は距離/144*1000 を超えない。
-    function maxScore(sec) {
-      let dist = sec <= 60
-        ? 240.0 * sec + 3.0 * sec * sec
-        : 25200.0 + 600.0 * (sec - 60);
-      return dist / 144.0 * 1000.0 + 2000.0;
+    // ---------- ゲーム情報 ----------
+    function gameBefore(id) {
+      return get(/databases/$(database)/documents/games/$(id)).data;
+    }
+    function gameAfter(id) {
+      return getAfter(/databases/$(database)/documents/games/$(id)).data;
+    }
+    function elapsedSec(g) {
+      return (request.time.toMillis() - g.startedAt.toMillis()) / 1000.0;
     }
 
-    function gamePath(id) {
-      return /databases/$(database)/documents/games/$(id);
+    // ---------- スコア上限 ----------
+    // 速度は常に min(600, 240 + 6t) px/秒 以下（js/config.js の速度カーブより）。
+    // 1000点の金リンゴは最短でも 144px おきなので、点数は 距離/144*1000 を超えない。
+    //   t <= 60 : 距離 <= 240t + 3t^2
+    //   t >  60 : 距離 <= 25200 + 600(t - 60)
+    function withinMaxScore(score, sec) {
+      return (sec <= 60 && score <= (240.0 * sec + 3.0 * sec * sec) / 144.0 * 1000.0 + 2000.0)
+        || (sec > 60 && score <= (25200.0 + 600.0 * (sec - 60)) / 144.0 * 1000.0 + 2000.0);
     }
 
     function validName(n) {
@@ -53,26 +59,22 @@ service cloud.firestore {
 
     // スコアを伴う書き込み（新規作成・自己ベスト更新）
     function validScoreWrite(period, uid) {
-      let d = request.resource.data;
-      let before = get(gamePath(d.gameId)).data;
-      let after = getAfter(gamePath(d.gameId)).data;
-      let sec = (request.time.toMillis() - before.startedAt.toMillis()) / 1000.0;
       return signedIn()
         && uid == request.auth.uid
         && validPeriod(period)
-        && d.keys().hasAll(['name', 'score', 'gameId', 'updatedAt'])
-        && d.keys().hasOnly(['name', 'score', 'gameId', 'updatedAt'])
-        && validName(d.name)
-        && d.gameId is string
-        && d.score is int
-        && d.score > 0
-        && d.score % 100 == 0
-        && d.updatedAt == request.time
-        && before.uid == request.auth.uid
-        && before.used == false
-        && after.used == true
-        && sec < 10800
-        && d.score <= maxScore(sec);
+        && request.resource.data.keys().hasAll(['name', 'score', 'gameId', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['name', 'score', 'gameId', 'updatedAt'])
+        && validName(request.resource.data.name)
+        && request.resource.data.gameId is string
+        && request.resource.data.score is int
+        && request.resource.data.score > 0
+        && request.resource.data.score % 100 == 0
+        && request.resource.data.updatedAt == request.time
+        && gameBefore(request.resource.data.gameId).uid == request.auth.uid
+        && gameBefore(request.resource.data.gameId).used == false
+        && gameAfter(request.resource.data.gameId).used == true
+        && elapsedSec(gameBefore(request.resource.data.gameId)) < 10800
+        && withinMaxScore(request.resource.data.score, elapsedSec(gameBefore(request.resource.data.gameId)));
     }
 
     // 表示名だけの変更
@@ -81,6 +83,27 @@ service cloud.firestore {
         && uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
         && validName(request.resource.data.name);
+    }
+
+    // ===== 診断用（原因が分かったら丸ごと消す） =====
+    match /diag/{test}/runs/{runId} {
+      allow create: if signedIn() && (
+        (test == 't0')
+        || (test == 't1' && request.resource.data.wk == weekKey())
+        || (test == 't2' && request.resource.data.mk == monthKey())
+        || (test == 't3' && request.resource.data.keys().hasAll(['name', 'score', 'gameId', 'updatedAt'])
+              && request.resource.data.keys().hasOnly(['name', 'score', 'gameId', 'updatedAt'])
+              && validName(request.resource.data.name)
+              && request.resource.data.score is int
+              && request.resource.data.score % 100 == 0)
+        || (test == 't4' && request.resource.data.updatedAt == request.time)
+        || (test == 't5' && gameBefore(request.resource.data.gameId).uid == request.auth.uid)
+        || (test == 't6' && gameBefore(request.resource.data.gameId).used == false)
+        || (test == 't7' && gameAfter(request.resource.data.gameId).used == true)
+        || (test == 't8' && elapsedSec(gameBefore(request.resource.data.gameId)) < 10800)
+        || (test == 't9' && withinMaxScore(request.resource.data.score, elapsedSec(gameBefore(request.resource.data.gameId))))
+        || (test == 't10' && validScoreWrite('all', request.auth.uid))
+      );
     }
 
     match /games/{gameId} {

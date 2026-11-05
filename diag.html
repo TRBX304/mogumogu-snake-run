@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ルール診断</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f6f3ea; color: #1f2a44; padding: 20px; max-width: 640px; margin: auto; }
+    h1 { font-size: 20px; }
+    button { font: inherit; font-weight: 700; padding: 12px 20px; border: none; border-radius: 12px; background: #3a86ff; color: #fff; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; background: #fff; border-radius: 12px; overflow: hidden; }
+    td { padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 14px; }
+    .ok { color: #2b9348; font-weight: 700; }
+    .ng { color: #d63c41; font-weight: 700; }
+    textarea { width: 100%; height: 160px; font-family: ui-monospace, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Firestore ルール診断</h1>
+  <p>ボタンを押すと、ルールの条件を1つずつ試します。終わったら下の結果をコピーして送ってください。</p>
+  <button id="run">診断スタート</button>
+  <table id="table"></table>
+  <textarea id="out" readonly></textarea>
+
+  <script type="module">
+    import { FIREBASE_CONFIG, FIREBASE_SDK_VERSION } from './js/firebase-config.js';
+    import { periodKey } from './js/ranking.js';
+
+    const base = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
+    const lines = [];
+    const table = document.getElementById('table');
+    const out = document.getElementById('out');
+
+    function report(id, label, ok, detail = '') {
+      lines.push(`${id} ${ok ? 'OK' : 'NG'} ${label}${detail ? ' / ' + detail : ''}`);
+      table.insertAdjacentHTML('beforeend',
+        `<tr><td>${id}</td><td>${label}</td><td class="${ok ? 'ok' : 'ng'}">${ok ? 'OK' : 'NG'}</td></tr>`);
+      out.value = lines.join('\n');
+    }
+
+    document.getElementById('run').addEventListener('click', async () => {
+      document.getElementById('run').disabled = true;
+      table.innerHTML = '';
+      lines.length = 0;
+      const [{ initializeApp }, A, F] = await Promise.all([
+        import(`${base}/firebase-app.js`),
+        import(`${base}/firebase-auth.js`),
+        import(`${base}/firebase-firestore-lite.js`),
+      ]);
+      const app = initializeApp(FIREBASE_CONFIG, 'diag');
+      const auth = A.getAuth(app);
+      const db = F.getFirestore(app);
+      await A.signInAnonymously(auth);
+      const uid = auth.currentUser.uid;
+      lines.push(`uid=${uid} week=${periodKey('week')} month=${periodKey('month')} now=${new Date().toISOString()}`);
+
+      const newGame = async () => {
+        const ref = F.doc(F.collection(db, 'games'));
+        await F.setDoc(ref, { uid, startedAt: F.serverTimestamp(), used: false });
+        return ref.id;
+      };
+      const diagRef = (t) => F.doc(F.collection(db, 'diag', t, 'runs'));
+      const tryIt = async (id, label, fn) => {
+        try { await fn(); report(id, label, true); }
+        catch (e) { report(id, label, false, e.code || e.message); }
+      };
+
+      let g;
+      await tryIt('g0', 'games 作成', async () => { g = await newGame(); });
+      await tryIt('g1', 'games を使用済みに更新', async () => {
+        const id = await newGame();
+        await F.updateDoc(F.doc(db, 'games', id), { used: true });
+      });
+      await tryIt('t0', 'ログイン済み', () => F.setDoc(diagRef('t0'), { x: 1 }));
+      await tryIt('t1', '週キー一致', () => F.setDoc(diagRef('t1'), { wk: periodKey('week') }));
+      await tryIt('t2', '月キー一致', () => F.setDoc(diagRef('t2'), { mk: periodKey('month') }));
+      await tryIt('t3', 'フィールド・名前・点数の形式', () => F.setDoc(diagRef('t3'),
+        { name: 'diag', score: 800, gameId: 'x', updatedAt: F.serverTimestamp() }));
+      await tryIt('t4', 'updatedAt = サーバー時刻', () => F.setDoc(diagRef('t4'), { updatedAt: F.serverTimestamp() }));
+      await tryIt('t5', 'game の持ち主', async () => F.setDoc(diagRef('t5'), { gameId: await newGame() }));
+      await tryIt('t6', 'game が未使用', async () => F.setDoc(diagRef('t6'), { gameId: await newGame() }));
+      await tryIt('t7', 'バッチ後に game が使用済み', async () => {
+        const id = await newGame();
+        const b = F.writeBatch(db);
+        b.update(F.doc(db, 'games', id), { used: true });
+        b.set(diagRef('t7'), { gameId: id });
+        await b.commit();
+      });
+      await tryIt('t8', '経過時間', async () => F.setDoc(diagRef('t8'), { gameId: await newGame() }));
+      await tryIt('t9', 'スコア上限', async () => F.setDoc(diagRef('t9'), { gameId: await newGame(), score: 800 }));
+      await tryIt('t10', '本番と同じ条件まとめて', async () => {
+        const id = await newGame();
+        const b = F.writeBatch(db);
+        b.update(F.doc(db, 'games', id), { used: true });
+        b.set(diagRef('t10'), { name: 'diag', score: 800, gameId: id, updatedAt: F.serverTimestamp() });
+        await b.commit();
+      });
+      lines.push('done');
+      out.value = lines.join('\n');
+    });
+  </script>
+</body>
+</html>
