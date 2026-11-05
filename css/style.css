@@ -86,6 +86,7 @@ canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
   color: var(--ink);
 }
 .logo-accent { color: var(--red); }
+.tagline { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 
 .card {
   background: var(--card);

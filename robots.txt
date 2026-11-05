@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mogumogu-snake-run.pages.dev/sitemap.xml

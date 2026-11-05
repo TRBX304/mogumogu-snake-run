@@ -1,6 +1,6 @@
 // MOGUMOGU SNAKE RUN — Service Worker
 // デプロイのたびに VERSION を上げると、古いキャッシュが確実に入れ替わります。
-const VERSION = 'v2';
+const VERSION = 'v3';
 const APP_CACHE = `msr-app-${VERSION}`;
 const RUNTIME_CACHE = `msr-runtime-${VERSION}`;
 
