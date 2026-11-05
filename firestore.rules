@@ -23,7 +23,8 @@ service cloud.firestore {
       return request.time + duration.value(9, 'h');
     }
     function weekKey() {
-      return 'w' + string(math.floor((math.floor(jst().toMillis() / 86400000.0) + 3) / 7.0));
+      // math.floor は小数型を返すため、文字列にすると "2966.0" になってしまう。int() で整数にする
+      return 'w' + string(int((int(jst().toMillis() / 86400000.0) + 3) / 7.0));
     }
     function monthKey() {
       return 'm' + string(jst().year() * 100 + jst().month());
@@ -83,27 +84,6 @@ service cloud.firestore {
         && uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
         && validName(request.resource.data.name);
-    }
-
-    // ===== 診断用（原因が分かったら丸ごと消す） =====
-    match /diag/{test}/runs/{runId} {
-      allow create: if signedIn() && (
-        (test == 't0')
-        || (test == 't1' && request.resource.data.wk == weekKey())
-        || (test == 't2' && request.resource.data.mk == monthKey())
-        || (test == 't3' && request.resource.data.keys().hasAll(['name', 'score', 'gameId', 'updatedAt'])
-              && request.resource.data.keys().hasOnly(['name', 'score', 'gameId', 'updatedAt'])
-              && validName(request.resource.data.name)
-              && request.resource.data.score is int
-              && request.resource.data.score % 100 == 0)
-        || (test == 't4' && request.resource.data.updatedAt == request.time)
-        || (test == 't5' && gameBefore(request.resource.data.gameId).uid == request.auth.uid)
-        || (test == 't6' && gameBefore(request.resource.data.gameId).used == false)
-        || (test == 't7' && gameAfter(request.resource.data.gameId).used == true)
-        || (test == 't8' && elapsedSec(gameBefore(request.resource.data.gameId)) < 10800)
-        || (test == 't9' && withinMaxScore(request.resource.data.score, elapsedSec(gameBefore(request.resource.data.gameId))))
-        || (test == 't10' && validScoreWrite('all', request.auth.uid))
-      );
     }
 
     match /games/{gameId} {
