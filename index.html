@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#f6f3ea">
+  <title>MOGUMOGU SNAKE RUN</title>
+  <meta name="description" content="リンゴをもぐもぐ食べ続ける3レーンのスネークラン">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/favicon-64.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="MOGUMOGU">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ================= HOME ================= -->
+  <section id="home" class="screen is-active">
+    <div class="home-inner">
+      <header class="logo">
+        <canvas id="logoArt" width="1" height="1"></canvas>
+        <h1><span class="logo-accent">MOGUMOGU</span><br>SNAKE RUN</h1>
+      </header>
+
+      <div class="card play-card">
+        <label class="field">
+          <span class="field-label">ニックネーム</span>
+          <input id="nickname" type="text" maxlength="12" placeholder="ランキングに表示されます" autocomplete="off" enterkeyhint="go">
+          <span id="nickHint" class="field-hint"></span>
+        </label>
+        <button id="startBtn" class="btn btn-primary btn-big">PLAY</button>
+        <div class="best-row">
+          <span>じこベスト</span>
+          <strong id="bestScore" class="num">0</strong>
+        </div>
+      </div>
+
+      <div class="card rules-card">
+        <ul class="rules">
+          <li><span class="icon" data-sprite="red"></span><span><b>赤リンゴ</b> 100点</span></li>
+          <li><span class="icon" data-sprite="gold"></span><span><b>金リンゴ</b> 1000点</span></li>
+          <li><span class="icon" data-sprite="poison"></span><span><b>どくリンゴ</b> さわるとアウト（Lv3〜）</span></li>
+        </ul>
+        <p class="rules-note">リンゴを1つでも取り逃すとゲームオーバー。10秒ごとにスピードアップ！</p>
+        <p class="rules-keys only-fine">操作：<kbd>←</kbd><kbd>→</kbd> または <kbd>A</kbd><kbd>D</kbd>　一時停止：<kbd>Esc</kbd></p>
+        <p class="rules-keys only-coarse">操作：画面下の ◀ ▶ ボタン</p>
+      </div>
+
+      <div class="card ranking-card">
+        <div class="ranking-head">
+          <h2>RANKING</h2>
+          <div class="tabs" role="tablist">
+            <button class="tab is-active" data-period="week" role="tab">週間</button>
+            <button class="tab" data-period="month" role="tab">月間</button>
+            <button class="tab" data-period="all" role="tab">全期間</button>
+          </div>
+        </div>
+        <div class="rank-grid">
+          <div class="rank-col is-active" data-period="week"><h3>週間</h3><ol class="rank-list"></ol></div>
+          <div class="rank-col" data-period="month"><h3>月間</h3><ol class="rank-list"></ol></div>
+          <div class="rank-col" data-period="all"><h3>全期間</h3><ol class="rank-list"></ol></div>
+        </div>
+        <p id="rankingNote" class="ranking-note"></p>
+      </div>
+
+      <footer class="home-foot">
+        <button id="muteBtn" class="btn btn-ghost btn-small"></button>
+      </footer>
+    </div>
+  </section>
+
+  <!-- ================= GAME ================= -->
+  <section id="gameScreen" class="screen">
+    <div class="hud">
+      <div class="hud-item"><span class="hud-label">SCORE</span><span id="hudScore" class="hud-value num score">0</span></div>
+      <div class="hud-item"><span class="hud-label">TIME</span><span id="hudTime" class="hud-value num">0</span></div>
+      <div class="hud-item"><span class="hud-label">SPEED</span><span id="hudLevel" class="hud-value num level">Lv.1</span></div>
+      <button id="pauseBtn" class="hud-pause" aria-label="一時停止">❚❚</button>
+    </div>
+
+    <div id="stage" class="stage">
+      <div class="canvas-frame">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="pauseOverlay" class="overlay" hidden>
+          <div class="overlay-card">
+            <h2>PAUSE</h2>
+            <button id="resumeBtn" class="btn btn-primary">つづける</button>
+            <button id="pauseHomeBtn" class="btn btn-ghost">ホームへ</button>
+            <button id="pauseMuteBtn" class="btn btn-ghost btn-small"></button>
+          </div>
+        </div>
+
+        <div id="resultOverlay" class="overlay" hidden>
+          <div class="overlay-card">
+            <h2 class="result-title">GAME OVER</h2>
+            <p id="resultReason" class="result-reason"></p>
+            <div class="result-score num" id="resultScore">0</div>
+            <div id="newRecord" class="new-record" hidden>NEW RECORD!</div>
+            <dl class="result-stats">
+              <div><dt>生存時間</dt><dd id="resultTime" class="num">0秒</dd></div>
+              <div><dt>レベル</dt><dd id="resultLevel" class="num">Lv.1</dd></div>
+              <div><dt>じこベスト</dt><dd id="resultBest" class="num">0</dd></div>
+            </dl>
+            <p id="submitStatus" class="submit-status"></p>
+            <button id="retryBtn" class="btn btn-primary">もう一度 <span class="only-fine key-hint">Space</span></button>
+            <button id="homeBtn" class="btn btn-ghost">ホーム</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pad only-coarse">
+      <button id="padLeft" class="pad-btn" aria-label="左へ">◀</button>
+      <button id="padRight" class="pad-btn" aria-label="右へ">▶</button>
+    </div>
+  </section>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+rules_version = '2';
+
+// MOGUMOGU SNAKE RUN — Firestore セキュリティルール
+//
+// データ構造
+//   games/{gameId}                      { uid, startedAt, used }   … ゲーム開始時に発行
+//   ranks/{periodKey}/entries/{uid}     { name, score, gameId, updatedAt }
+//     periodKey = 'all' | 'm202611'（日本時間の年月）| 'w2970'（月曜始まりの通し週番号）
+//
+// スコア送信は「games の used を true にする」＋「entries を書く」を1回のバッチで行う。
+// ・同じ gameId は一度しか使えない（リプレイ防止）
+// ・開始からの経過時間（サーバー時刻）で取りうるスコアの上限を超えたら拒否
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ---------- 期間キー（js/ranking.js の periodKey と同じ計算） ----------
+    function jstMillis() {
+      return request.time.toMillis() + 32400000;
+    }
+    function weekKey() {
+      return 'w' + string(math.floor((math.floor(jstMillis() / 86400000.0) + 3) / 7.0));
+    }
+    function monthKey() {
+      let t = timestamp.value(jstMillis());
+      return 'm' + string(t.year() * 100 + t.month());
+    }
+    function validPeriod(period) {
+      return period == 'all' || period == weekKey() || period == monthKey();
+    }
+
+    // ---------- スコア上限 ----------
+    // 速度は常に min(600, 240 + 6t) px/秒 以下（js/config.js の速度カーブより）。
+    // 1000点の金リンゴは最短でも 144px おきなので、点数は距離/144*1000 を超えない。
+    function maxScore(sec) {
+      let dist = sec <= 60
+        ? 240.0 * sec + 3.0 * sec * sec
+        : 25200.0 + 600.0 * (sec - 60);
+      return dist / 144.0 * 1000.0 + 2000.0;
+    }
+
+    function gamePath(id) {
+      return /databases/$(database)/documents/games/$(id);
+    }
+
+    function validName(n) {
+      return n is string && n.size() >= 1 && n.size() <= 24;
+    }
+
+    // スコアを伴う書き込み（新規作成・自己ベスト更新）
+    function validScoreWrite(period, uid) {
+      let d = request.resource.data;
+      let before = get(gamePath(d.gameId)).data;
+      let after = getAfter(gamePath(d.gameId)).data;
+      let sec = (request.time.toMillis() - before.startedAt.toMillis()) / 1000.0;
+      return signedIn()
+        && uid == request.auth.uid
+        && validPeriod(period)
+        && d.keys().hasAll(['name', 'score', 'gameId', 'updatedAt'])
+        && d.keys().hasOnly(['name', 'score', 'gameId', 'updatedAt'])
+        && validName(d.name)
+        && d.gameId is string
+        && d.score is int
+        && d.score > 0
+        && d.score % 100 == 0
+        && d.updatedAt == request.time
+        && before.uid == request.auth.uid
+        && before.used == false
+        && after.used == true
+        && sec < 10800
+        && d.score <= maxScore(sec);
+    }
+
+    // 表示名だけの変更
+    function nameOnlyUpdate(uid) {
+      return signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && validName(request.resource.data.name);
+    }
+
+    match /games/{gameId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['uid', 'startedAt', 'used'])
+        && request.resource.data.keys().hasOnly(['uid', 'startedAt', 'used'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.startedAt == request.time
+        && request.resource.data.used == false;
+
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && resource.data.used == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used'])
+        && request.resource.data.used == true;
+
+      allow read, delete: if false;
+    }
+
+    match /ranks/{period}/entries/{uid} {
+      allow read: if true;
+      allow create: if validScoreWrite(period, uid);
+      allow update: if nameOnlyUpdate(uid)
+        || (validScoreWrite(period, uid) && request.resource.data.score > resource.data.score);
+      allow delete: if false;
+    }
+  }
+}
