@@ -132,6 +132,7 @@ async function showResult(r) {
   $('#resultBest').textContent = Math.max(best, r.score);
   $('#newRecord').hidden = !isNew || r.score === 0;
   $('#resultOverlay').hidden = false;
+  setupShare(r);
 
   const status = $('#submitStatus');
   const name = getNickname();
@@ -162,6 +163,25 @@ async function showResult(r) {
     status.textContent = 'オフラインのためランキング対象外です';
   }
 }
+
+// ================= シェア =================
+const SITE_URL = 'https://mogumogu-snake-run.pages.dev/';
+let shareData = null;
+
+function setupShare(r) {
+  const row = $('#shareRow');
+  if (r.score <= 0) { row.hidden = true; return; }
+  row.hidden = false;
+  const text = `MOGUMOGU SNAKE RUN で ${r.score.toLocaleString()}点 もぐもぐしました！🍎\n（${r.time}秒・Lv.${r.level}）\n#MOGUMOGUSNAKERUN`;
+  shareData = { title: 'MOGUMOGU SNAKE RUN', text, url: SITE_URL };
+  $('#shareX').href = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(SITE_URL)}`;
+  $('#shareNative').hidden = !navigator.share;
+}
+
+$('#shareNative').addEventListener('click', async () => {
+  if (!shareData || !navigator.share) return;
+  try { await navigator.share(shareData); } catch { /* キャンセル */ }
+});
 
 // ================= 入力 =================
 const MOVE_LEFT = new Set(['ArrowLeft', 'a', 'A']);

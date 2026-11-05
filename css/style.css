@@ -268,6 +268,11 @@ kbd {
 .result-stats div { background: #faf8f2; border-radius: 10px; padding: 6px 2px; }
 .result-stats dt { font-size: 10px; color: var(--muted); font-weight: 700; }
 .result-stats dd { font-size: 15px; }
+.share-row { display: flex; gap: 8px; }
+.share-row .btn { flex: 1; text-decoration: none; }
+.share-row[hidden], .share-row .btn[hidden] { display: none; }
+.btn-x { background: #0f1419; color: #fff; box-shadow: 0 3px 0 #000; }
+.btn-x:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
 .submit-status { font-size: 11px; color: var(--muted); min-height: 1em; }
 .key-hint { font-family: var(--pixel); font-size: 11px; opacity: 0.75; font-weight: 400; }
 
