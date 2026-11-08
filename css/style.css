@@ -156,7 +156,8 @@ kbd {
 .rank-empty, .rank-loading { padding: 18px 0; text-align: center; font-size: 13px; color: var(--muted); background: none !important; display: block !important; }
 .ranking-note { margin-top: 10px; font-size: 11px; color: var(--muted); line-height: 1.5; }
 
-.home-foot { display: flex; justify-content: center; }
+.home-foot { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.credit { font-family: var(--pixel); font-size: 13px; letter-spacing: 1px; color: var(--muted); }
 
 /* PC: ランキング3列を横並び */
 @media (min-width: 900px) {
