@@ -85,6 +85,7 @@ class LocalRanking {
 }
 
 // ================= Firebase =================
+const GAME_TTL_MS = 24 * 60 * 60 * 1000; // games は1日で期限切れ
 class FirebaseRanking {
   constructor(fb) {
     this.mode = 'firebase';
@@ -125,6 +126,8 @@ class FirebaseRanking {
         uid: this.uid,
         startedAt: fs.serverTimestamp(),
         used: false,
+        // この日時を過ぎたら Firestore の TTL で自動削除される（3時間を過ぎた game はもう使えない）
+        expireAt: new Date(Date.now() + GAME_TTL_MS),
       }), 5000);
       return { gameId: ref.id };
     } catch {

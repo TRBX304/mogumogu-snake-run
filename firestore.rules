@@ -3,7 +3,8 @@ rules_version = '2';
 // MOGUMOGU SNAKE RUN — Firestore セキュリティルール
 //
 // データ構造
-//   games/{gameId}                      { uid, startedAt, used }   … ゲーム開始時に発行
+//   games/{gameId}                      { uid, startedAt, used, expireAt } … ゲーム開始時に発行。
+//                                        expireAt を過ぎると TTL ポリシーで自動削除
 //   ranks/{periodKey}/entries/{uid}     { name, score, gameId, updatedAt }
 //     periodKey = 'all' | 'm202611'（日本時間の年月）| 'w2970'（月曜始まりの通し週番号）
 //
@@ -87,12 +88,16 @@ service cloud.firestore {
     }
 
     match /games/{gameId} {
+      // expireAt … TTL（自動削除）用。端末の時計のズレを考えて「1時間後〜3日後」の範囲なら受け付ける
       allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['uid', 'startedAt', 'used'])
-        && request.resource.data.keys().hasOnly(['uid', 'startedAt', 'used'])
+        && request.resource.data.keys().hasAll(['uid', 'startedAt', 'used', 'expireAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'startedAt', 'used', 'expireAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.startedAt == request.time
-        && request.resource.data.used == false;
+        && request.resource.data.used == false
+        && request.resource.data.expireAt is timestamp
+        && request.resource.data.expireAt > request.time + duration.value(1, 'h')
+        && request.resource.data.expireAt < request.time + duration.value(3, 'd');
 
       allow update: if signedIn()
         && resource.data.uid == request.auth.uid
