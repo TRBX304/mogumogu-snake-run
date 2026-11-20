@@ -270,7 +270,7 @@ function sanitizeName(s) {
 }
 
 // 簡易NGワード（ひらがな/カタカナ・大文字小文字・空白の違いを吸収して判定）
-const NG_WORDS = ['しね', 'ころす', 'fuck', 'shit', 'bitch', 'nigger', 'ちんこ', 'まんこ'];
+const NG_WORDS = ['しね', 'ころす', 'fuck', 'shit', 'bitch', 'nigger', 'ちんこ', 'まんこ', '万個', '淫夢'];
 function normalizeForNg(s) {
   return s.toLowerCase()
     .replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60))
